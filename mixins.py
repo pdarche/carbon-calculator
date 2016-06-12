@@ -20,6 +20,10 @@ except ImportError:
     import urllib as urllib_parse  # py2
 
 
+class AuthError(Exception):
+    pass
+
+
 class MovesMixin(OAuth2Mixin):
     """Moves authentication using OAuth2."""
     _OAUTH_ACCESS_TOKEN_URL = "https://api.moves-app.com/oauth/v1/access_token"
@@ -50,8 +54,56 @@ class MovesMixin(OAuth2Mixin):
             future.set_exception(AuthError('Moves auth error: %s' % str(response)))
             return
 
-        args = escape.json_decode(response.body)
-        future.set_result(args)
+        user = escape.json_decode(response.body)
+        session = {
+            "access_token": user["access_token"],
+            "expires": user["expires_in"]
+        }
+
+        self.moves_request(
+            path="/user/profile",
+            callback=functools.partial(
+                self._on_get_user_info, future, user),
+            access_token=session["access_token"]
+        )
+
+    def _on_get_user_info(self, future, user, profile):
+        if profile is None:
+            future.set_result(None)
+            return
+
+        if user:
+            profile['user'] = user
+
+        future.set_result(profile)
+
+    @_auth_return_future
+    def moves_request(self, path, callback, access_token=None,
+                         post_args=None, **args):
+        """Fetches the given relative API path, e.g., "/btaylor/picture" """
+        url = self._BASE_URL + path
+        all_args = {}
+        if access_token:
+            all_args["access_token"] = access_token
+            all_args.update(args)
+
+        if all_args:
+            url += "?" + urllib_parse.urlencode(all_args)
+        callback = functools.partial(self._on_moves_request, callback)
+        http = self.get_auth_http_client()
+        if post_args is not None:
+            http.fetch(url, method="POST", body=urllib_parse.urlencode(post_args),
+                       callback=callback)
+        else:
+            http.fetch(url, callback=callback)
+
+    def _on_moves_request(self, future, response):
+        if response.error:
+            future.set_exception(AuthError("Error response %s fetching %s" %
+                                           (response.error, response.request.url)))
+            return
+
+        future.set_result(escape.json_decode(response.body))
 
     def get_auth_http_client(self):
         """Returns the `.AsyncHTTPClient` instance to be used for auth requests.

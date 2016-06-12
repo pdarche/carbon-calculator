@@ -7,6 +7,7 @@ import datetime
 import dateutil.parser
 import pytz
 import logging
+import time
 
 import pymongo
 import moves as mvs
@@ -31,7 +32,7 @@ def existing_dates(profile, record_type):
     """ Finds the earliest update for a moves record. """
     docs = db.moves.find({
         'record_type': record_type,
-        'user_id': profile['user_id']
+        'userId': profile['userId']
         }, {'date': 1})
     dates = [doc['date'].date() for doc in docs]
 
@@ -57,7 +58,7 @@ def last_update_datetime(profile, record_type):
     last_update = db.moves.find_one({
         '$query': {
             'record_type': record_type,
-            'user_id': profile['user_id']
+            'userId': profile['userId']
         },
         '$orderby': {'last_update': -1}
     })
@@ -150,7 +151,7 @@ def transform_resource(resource, record_type, profile):
         update_datetime = date_datetime
 
     transformed = {
-        'user_id': profile['user_id'],
+        'userId': profile['userId'],
         'record_type': record_type,
         'last_update': update_datetime,
         'date': date_datetime,
@@ -161,7 +162,7 @@ def transform_resource(resource, record_type, profile):
 
 
 def transform_resources(resources, record_type, profile):
-    """ Adds some phro metadata to raw Moves resources. """
+    """ Adds some metadata to raw Moves resources. """
     for resource in resources:
         yield transform_resource(resource, record_type, profile)
 
@@ -211,10 +212,12 @@ def import_resource_type(profile, record_type):
 # if __name__ == '__main__':
 #     client = pymongo.MongoClient('localhost', 27017)
 #     db = client.carbon_calculator
-#     profile = db.users.find_one({'user_id': 32734778124657154})
-#     moves = mvs.MovesClient(access_token=profile['access_token'])
+#     profile = db.users.find_one({'userId': 32734778124657154})
+#     moves = mvs.MovesClient(access_token=profile['user']['access_token'])
 
-#     import_resource_type(profile, 'storyline')
+#     for i in range(30):
+#         import_resource_type(profile, 'storyline')
+#         time.sleep(.25)
 
 
 

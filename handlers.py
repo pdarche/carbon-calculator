@@ -27,10 +27,10 @@ class MovesConnectHandler(tornado.web.RequestHandler,
     @tornado.gen.coroutine
     def get(self):
         if self.get_argument('code', False):
-            user = yield self.get_authenticated_user(
+            profile = yield self.get_authenticated_user(
                 redirect_uri='http://127.0.0.1:8000/moves',
                 code=self.get_argument("code"))
-            db.users.insert(user)
+            db.profiles.insert(profile)
         else:
             yield self.authorize_redirect(
                 redirect_uri='http://127.0.0.1:8000/moves',
