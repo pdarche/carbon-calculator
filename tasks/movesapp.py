@@ -209,15 +209,15 @@ def import_resource_type(profile, record_type):
 
 
 # SOME TEST STUFF TO SEE HOW THINGS ARE WORKING
-# if __name__ == '__main__':
-#     client = pymongo.MongoClient('localhost', 27017)
-#     db = client.carbon_calculator
-#     profile = db.users.find_one({'userId': 32734778124657154})
-#     moves = mvs.MovesClient(access_token=profile['user']['access_token'])
+if __name__ == '__main__':
+    # client = pymongo.MongoClient('localhost', 27017)
+    # db = client.carbon_calculator
+    # profile = db.users.find_one({'userId': 32734778124657154})
+    # moves = mvs.MovesClient(access_token=profile['user']['access_token'])
 
-#     for i in range(30):
-#         import_resource_type(profile, 'storyline')
-#         time.sleep(.25)
+    # for i in range(30):
+    #     import_resource_type(profile, 'storyline')
+    #     time.sleep(.25)
 
 
 
