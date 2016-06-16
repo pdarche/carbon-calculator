@@ -273,6 +273,8 @@ if __name__ == '__main__':
     features = subways_entrances['features']
     station_points = [p['geometry']['coordinates'] for p in features]
 
+    # for i in range(20):
+    # print "round {}".format(i)`
     # Find the dates that haven't been fetched
     membership_dates = service_daterange(profile['profile']['firstDate'])
     existing_dates = existing_dates_(profile, 'storyline')

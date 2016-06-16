@@ -1,5 +1,6 @@
 #!/usr/bin/env python
 # -*- coding: utf-8 -*-
+import json
 
 import tornado.web
 import tornado.gen
@@ -37,4 +38,10 @@ class MovesConnectHandler(tornado.web.RequestHandler,
                 client_id=settings["moves_client_id"],
                 scope=['activity', 'location'],
                 response_type="code")
+
+
+class TransportsHandler(tornado.web.RequestHandler):
+    def get(self):
+        transports = list(db.moves2.find({}, {'_id': 0}).limit(10))
+        self.write(json.dumps(transports))
 

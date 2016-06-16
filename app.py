@@ -22,13 +22,16 @@ if __name__ == "__main__":
         static_path=os.path.join(os.path.dirname(__file__), 'static')
     )
     app = tornado.web.Application(
+        debug=True,
         handlers = [
             (r"/", handlers.MainHandler),
             (r"/moves", handlers.MovesConnectHandler),
+            (r"/transports", handlers.TransportsHandler),
             (r"/static/(.*)", tornado.web.StaticFileHandler, {"path": "./static"}),
         ],
         **settings
     )
+    tornado.autoreload.start()
     http_server = tornado.httpserver.HTTPServer(app)
     http_server.listen(8000)
     tornado.ioloop.IOLoop.instance().start()
