@@ -2,144 +2,100 @@ var mapboxTiles = L.tileLayer('http://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png
     attribution: 'Map data &copy; <a href="http://openstreetmap.org">OpenStreetMap</a> contributors, <a href="http://creativecommons.org/licenses/by-sa/2.0/">CC-BY-SA</a>, Imagery © <a href="http://mapbox.com">Mapbox</a>'
 });
 
+// initialize the leaflet map
 var map = L.map('map')
     .addLayer(mapboxTiles)
     .setView([40.72332345541449, -73.99], 13);
-var svg = d3.select(map.getPanes().overlayPane).append("svg");
-var g = svg.append("g").attr("class", "leaflet-zoom-hide");
 
-d3.json("/static/data/testPoint.json", function(collection) {
-  var featuresdata = collection.features.filter(function(d) {
-    return d.properties.id == "transport"
-  });
+d3.json("/static/data/testPoints.json", function(data) {
+  // create an array of feature arrays
+  collections = data.points;
 
-  // initialize the transform generator
-  var transform = d3.geo.transform({
-    point: projectPoint
-  });
+  // create the svg for the d3 paths
+  var svg = d3.select(map.getPanes().overlayPane)
+    .selectAll('.transport')
+    .data(collections)
+    .enter()
+    .append("svg")
+    .attr('class', 'transport');
 
-  // initilize the path generator
-  var d3path = d3.geo.path().projection(transform);
+  // create the container elements
+  var g = svg.append("g")
+    .attr("class", "transport__g");
 
-  var toLine = d3.svg.line()
-      .interpolate("linear")
-      .x(function(d) {
-        return applyLatLngToLayer(d).x
-      })
-      .y(function(d) {
-        return applyLatLngToLayer(d).y
-      });
-
+  // create the points
   var ptFeatures = g.selectAll("circle")
-      .data(featuresdata)
-      .enter()
-      .append("circle")
-      .attr("r", 3)
-      .attr("class", "waypoints");
+    .data(function(d){return d.features})
+    .enter()
+    .append("circle")
+    .attr("r", 3)
+    .attr("class", "waypoints");
 
+  // create the line
   var linePath = g.selectAll(".lineConnect")
-      .data([featuresdata])
-      .enter()
-      .append("path")
-      .attr("class", "lineConnect");
+    .data(function(d){return d.features})
+    .enter()
+    .append("path")
+    .attr("class", "lineConnect");
 
-  var marker = g.append("circle")
-      .attr("r", 5)
-      .attr("id", "marker")
-      .attr("class", "travelMarker");
+  map.on("viewreset", function(ev){
+    update(collections, d3path, ptFeatures, svg, linePath, g, toLine);
+  });
+  update(collections, d3path, ptFeatures, svg, linePath, g, toLine);
 
-  var originANDdestination = [
-      featuresdata[0],
-      featuresdata[featuresdata.length-1]
-  ]
-  var begend = g.selectAll(".drinks")
-      .data(originANDdestination)
-      .enter()
-      .append("circle", ".drinks")
-      .attr("r", 5)
-      .style("fill", "red")
-      .style("opacity", "1");
-
-  map.on("viewreset", reset);
-  reset();
-  // transition();
-
-  // Reposition the SVG to cover the features.
-  function reset() {
-    var bounds = d3path.bounds(collection)
-      , topLeft = bounds[0]
-      , bottomRight = bounds[1];
-
-    begend.attr("transform", function(d) {
-      return "translate(" +
-        applyLatLngToLayer(d).x + "," +
-        applyLatLngToLayer(d).y + ")";
-    });
-
-    ptFeatures.attr("transform", function(d) {
-      return "translate(" +
-        applyLatLngToLayer(d).x + "," +
-        applyLatLngToLayer(d).y + ")";
-    });
-
-    // SET THE STARTING POINT
-    marker.attr("transform", function() {
-      var y = featuresdata[0].geometry.coordinates[1]
-      var x = featuresdata[0].geometry.coordinates[0]
-      return "translate(" +
-        map.latLngToLayerPoint(new L.LatLng(y, x)).x + "," +
-        map.latLngToLayerPoint(new L.LatLng(y, x)).y + ")";
-    });
-
-    // Setting the size and location of the overall SVG container
-    svg.attr("width", bottomRight[0] - topLeft[0] + 120)
-      .attr("height", bottomRight[1] - topLeft[1] + 120)
-      .style("left", topLeft[0] - 50 + "px")
-      .style("top", topLeft[1] - 50 + "px");
-
-    // linePath.attr("d", d3path);
-    linePath.attr("d", toLine)
-    // ptPath.attr("d", d3path);
-    g.attr("transform", "translate(" +
-      (-topLeft[0] + 50) + "," + (-topLeft[1] + 50) + ")");
-  }
-
-  function transition() {
-    linePath.transition()
-      .duration(7500)
-      .attrTween("stroke-dasharray", tweenDash)
-      .each("end", function() {
-          d3.select(this).call(transition);// infinite loop
-      });
-  }
-  // this function feeds the attrTween operator above with the
-  // stroke and dash lengths
-  function tweenDash() {
-    return function(t) {
-      //total length of path (single value)
-      var l = linePath.node().getTotalLength();
-
-      interpolate = d3.interpolateString("0," + l, l + "," + l);
-      //t is fraction of time 0-1 since transition began
-      var marker = d3.select("#marker");
-      var p = linePath.node().getPointAtLength(t * l);
-      //Move the marker to that point
-      marker.attr("transform", "translate(" + p.x + "," + p.y + ")"); //move marker
-      return interpolate(t);
-    }
-  }
-
-  function projectPoint(x, y) {
-    var point = map.latLngToLayerPoint(new L.LatLng(y, x));
-    this.stream.point(point.x, point.y);
-  }
 });
 
-// similar to projectPoint this function converts lat/long to
-// svg coordinates except that it accepts a point from our
-// GeoJSON
+// transform generator
+var transform = d3.geo.transform({
+  point: projectPoint
+});
+// path generator
+var d3path = d3.geo.path().projection(transform);
+
+// svg path generator
+var toLine = d3.svg.line()
+  .interpolate("linear")
+  .x(function(d) {
+    return applyLatLngToLayer(d).x
+  })
+  .y(function(d) {
+    return applyLatLngToLayer(d).y
+  });
+
+function projectPoint(x, y) {
+  var point = map.latLngToLayerPoint(new L.LatLng(y, x));
+  this.stream.point(point.x, point.y);
+}
+
+// converts lat/long to svg coordinates except from a point
 function applyLatLngToLayer(d) {
-    var y = d.geometry.coordinates[1]
-    var x = d.geometry.coordinates[0]
-    return map.latLngToLayerPoint(new L.LatLng(y, x))
+  var y = d.geometry.coordinates[1];
+  var x = d.geometry.coordinates[0];
+  return map.latLngToLayerPoint(new L.LatLng(y, x))
+}
+
+// Reposition the SVG to cover the features.
+function update(collections, d3path, ptFeatures, svg, linePath, g, toLine) {
+  var bounds = d3path.bounds(collections[0])
+    , topLeft = bounds[0]
+    , bottomRight = bounds[1];
+
+  // Setting the size and location of the overall SVG container
+  svg.attr("width", bottomRight[0] - topLeft[0] + 120)
+    .attr("height", bottomRight[1] - topLeft[1] + 120)
+    .style("left", topLeft[0] - 50 + "px")
+    .style("top", topLeft[1] - 50 + "px");
+
+  g.attr("transform", "translate(" +
+    (-topLeft[0] + 50) + "," + (-topLeft[1] + 50) + ")");
+
+  // translate the point to the lat lng
+  ptFeatures.attr("transform", function(d) {
+    return "translate(" +
+      applyLatLngToLayer(d).x + "," +
+      applyLatLngToLayer(d).y + ")";
+  });
+
+  // generate the line path
+  linePath.attr("d", toLine);
 }
