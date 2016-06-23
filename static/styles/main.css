@@ -31,7 +31,7 @@ path {
 
 .waypoints {
     fill: black;
-    opacity: 1;
+    opacity: 0;
 }
 
 .drinks {

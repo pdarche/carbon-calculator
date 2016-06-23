@@ -46,6 +46,7 @@ d3.json("/static/data/testPoints.json", function(data) {
     update(collections, d3path, ptFeatures, svg, linePath, g, toLine);
   });
   update(collections, d3path, ptFeatures, svg, linePath, g, toLine);
+  // transition(linePath);
 
 });
 
@@ -76,6 +77,29 @@ function applyLatLngToLayer(d) {
   var y = d.geometry.coordinates[1];
   var x = d.geometry.coordinates[0];
   return map.latLngToLayerPoint(new L.LatLng(y, x))
+}
+
+function transition(linePath) {
+  linePath.transition()
+    .duration(7500)
+    .attrTween("stroke-dasharray", function(){ return tweenDash(linePath) })
+    .each("end", function() {
+        d3.select(this).call(transition);// infinite loop
+    });
+}
+
+function tweenDash(linePath) {
+  return function(t) {
+    //total length of path (single value)
+    var l = linePath.node().getTotalLength();
+    interpolate = d3.interpolateString("0," + l, l + "," + l);
+    //t is fraction of time 0-1 since transition began
+    var marker = d3.select("#marker");
+    var p = linePath.node().getPointAtLength(t * l);
+    //Move the marker to that point
+    marker.attr("transform", "translate(" + p.x + "," + p.y + ")"); //move marker
+    return interpolate(t);
+  }
 }
 
 // Reposition the SVG to cover the features.
