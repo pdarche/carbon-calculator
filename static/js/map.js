@@ -10,6 +10,10 @@ var map = L.map('map')
 d3.json("/static/data/testPoints.json", function(data) {
   // create an array of feature arrays
   collections = data.points;
+  collections = collections.map(function(collection){
+    collection.bounds = d3path.bounds(collection);
+    return collection
+  });
 
   // create the svg for the d3 paths
   var svg = d3.select(map.getPanes().overlayPane)
@@ -33,7 +37,7 @@ d3.json("/static/data/testPoints.json", function(data) {
 
   // create the line
   var linePath = g.selectAll(".lineConnect")
-    .data(function(d){return d.features})
+    .data(function(d){return [d.features]})
     .enter()
     .append("path")
     .attr("class", "lineConnect");
@@ -80,14 +84,23 @@ function update(collections, d3path, ptFeatures, svg, linePath, g, toLine) {
     , topLeft = bounds[0]
     , bottomRight = bounds[1];
 
-  // Setting the size and location of the overall SVG container
-  svg.attr("width", bottomRight[0] - topLeft[0] + 120)
-    .attr("height", bottomRight[1] - topLeft[1] + 120)
-    .style("left", topLeft[0] - 50 + "px")
-    .style("top", topLeft[1] - 50 + "px");
+  svg.attr("width", function(d){
+      var bounds = d3path.bounds(d);
+      return bounds[1][0] - bounds[0][0] + 120})
+    .attr("height", function(d){
+      var bounds = d3path.bounds(d);
+      return bounds[1][1] - bounds[0][1] + 120})
+    .style("left", function(d){
+      var bounds = d3path.bounds(d);
+      return bounds[0][0] - 50 + "px"})
+    .style("top", function(d){
+      var bounds = d3path.bounds(d);
+      return bounds[0][1] - 50 + "px"});
 
-  g.attr("transform", "translate(" +
-    (-topLeft[0] + 50) + "," + (-topLeft[1] + 50) + ")");
+  g.attr("transform", function(d){
+    var bounds = d3path.bounds(d);
+    return "translate(" + (-bounds[0][0] + 50) + "," + (-bounds[0][1] + 50) + ")"
+  });
 
   // translate the point to the lat lng
   ptFeatures.attr("transform", function(d) {
