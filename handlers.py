@@ -42,6 +42,8 @@ class MovesConnectHandler(tornado.web.RequestHandler,
 
 class TransportsHandler(tornado.web.RequestHandler):
     def get(self):
-        transports = list(db.moves2.find({}, {'_id': 0}).limit(10))
+        skip = int(self.get_argument('offset'))
+        limit = int(self.get_argument('limit'))
+        transports = list(db.moves2.find({}, {'_id': 0}).skip(2000).limit(100))
         self.write(json.dumps(transports))
 

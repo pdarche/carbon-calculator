@@ -2,53 +2,110 @@ var mapboxTiles = L.tileLayer('http://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png
     attribution: 'Map data &copy; <a href="http://openstreetmap.org">OpenStreetMap</a> contributors, <a href="http://creativecommons.org/licenses/by-sa/2.0/">CC-BY-SA</a>, Imagery © <a href="http://mapbox.com">Mapbox</a>'
 });
 
+var colors = {
+  'car': 'purple',
+  'airplane': 'red',
+  'subway': 'green',
+  'bus': 'blue',
+}
+
 // initialize the leaflet map
 var map = L.map('map')
     .addLayer(mapboxTiles)
-    .setView([40.72332345541449, -73.99], 13);
+    .setView([40.72332345541449, -73.99], 12);
 
-d3.json("/static/data/testPoints.json", function(data) {
-  // create an array of feature arrays
-  collections = data.points;
-  collections = collections.map(function(collection){
-    collection.bounds = d3path.bounds(collection);
-    return collection
+map.touchZoom.disable();
+map.doubleClickZoom.disable();
+map.scrollWheelZoom.disable();
+map.boxZoom.disable();
+map.keyboard.disable();
+
+$(document).on('keypress', function(){
+  var offset = Math.floor(Math.random() * 600) + 1;
+  var limit = Math.floor(Math.random() * 10) + 1;
+
+  $.getJSON("/transports", {offset: offset, limit: limit}, function(data) {
+    collections = data.map(function(transport){
+      transport.bounds = d3path.bounds(transport.geojson);
+      return transport
+    });
+    update(collections);
   });
+});
 
+function update(data){
   // create the svg for the d3 paths
-  var svg = d3.select(map.getPanes().overlayPane)
+  var svgs = d3.select(map.getPanes().overlayPane)
     .selectAll('.transport')
-    .data(collections)
-    .enter()
-    .append("svg")
-    .attr('class', 'transport');
+    .data(data)
+  // Exit and remove the old svgs and all the gs
+  svgs.exit().remove();
+  svgs.select('g').remove();
+  // Update
+  svgs.attr('class', function(d){
+      return 'transport ' + d.type})
+    .attr("width", function(d){
+      return d.bounds[1][0] - d.bounds[0][0] + 120})
+    .attr("height", function(d){
+      return d.bounds[1][1] - d.bounds[0][1] + 120})
+    .style("left", function(d){
+      return d.bounds[0][0] - 50 + "px"})
+    .style("top", function(d){
+      return d.bounds[0][1] - 50 + "px"});
 
-  // create the container elements
-  var g = svg.append("g")
-    .attr("class", "transport__g");
+  // Enter
+  svgs.enter().append("svg")
+    .attr('class', function(d){
+      return 'transport ' + d.type})
+    .attr("width", function(d){
+      return d.bounds[1][0] - d.bounds[0][0] + 120})
+    .attr("height", function(d){
+      return d.bounds[1][1] - d.bounds[0][1] + 120})
+    .style("left", function(d){
+      return d.bounds[0][0] - 50 + "px"})
+    .style("top", function(d){
+      return d.bounds[0][1] - 50 + "px"});
 
-  // create the points
+  // container elements
+  var g = svgs.append("g")
+    .attr("class", "transport__g")
+    .attr("transform", function(d){
+      return "translate(" +
+        (-d.bounds[0][0] + 50) + "," + (-d.bounds[0][1] + 50) + ")"
+    });
+
+  // Points
   var ptFeatures = g.selectAll("circle")
-    .data(function(d){return d.features})
-    .enter()
-    .append("circle")
+    .data(function(d){return d.geojson.features})
+  //Exit
+  ptFeatures.exit().remove();
+  // Enter
+  ptFeatures.enter().append("circle")
     .attr("r", 3)
-    .attr("class", "waypoints");
+    .attr("class", "waypoints")
 
-  // create the line
-  var linePath = g.selectAll(".lineConnect")
-    .data(function(d){return [d.features]})
-    .enter()
+  // Update
+  ptFeatures.attr("transform", function(d) {
+      return "translate(" +
+        applyLatLngToLayer(d).x + "," +
+        applyLatLngToLayer(d).y + ")";
+    });
+
+  // Paths
+  var path = g.selectAll(".lineConnect")
+    .data(function(d){
+      return [d.geojson.features]
+    });
+  // Enter
+  path.enter()
     .append("path")
     .attr("class", "lineConnect");
+  // Update
+  path.attr("d", toLine);
+  // Exit
+  path.exit().remove();
 
-  map.on("viewreset", function(ev){
-    update(collections, d3path, ptFeatures, svg, linePath, g, toLine);
-  });
-  update(collections, d3path, ptFeatures, svg, linePath, g, toLine);
-  // transition(linePath);
-
-});
+}
 
 // transform generator
 var transform = d3.geo.transform({
@@ -79,23 +136,20 @@ function applyLatLngToLayer(d) {
   return map.latLngToLayerPoint(new L.LatLng(y, x))
 }
 
-function transition(linePath) {
-  linePath.transition()
+function transition(path) {
+  path.transition()
     .duration(7500)
-    .attrTween("stroke-dasharray", function(){ return tweenDash(linePath) })
-    .each("end", function() {
-        d3.select(this).call(transition);// infinite loop
-    });
+    .attrTween("stroke-dasharray", function(){return tweenDash(path)})
 }
 
-function tweenDash(linePath) {
+function tweenDash(path) {
   return function(t) {
     //total length of path (single value)
-    var l = linePath.node().getTotalLength();
+    var l = path.node().getTotalLength();
     interpolate = d3.interpolateString("0," + l, l + "," + l);
     //t is fraction of time 0-1 since transition began
     var marker = d3.select("#marker");
-    var p = linePath.node().getPointAtLength(t * l);
+    var p = path.node().getPointAtLength(t * l);
     //Move the marker to that point
     marker.attr("transform", "translate(" + p.x + "," + p.y + ")"); //move marker
     return interpolate(t);
@@ -103,30 +157,27 @@ function tweenDash(linePath) {
 }
 
 // Reposition the SVG to cover the features.
-function update(collections, d3path, ptFeatures, svg, linePath, g, toLine) {
-  var bounds = d3path.bounds(collections[0])
-    , topLeft = bounds[0]
-    , bottomRight = bounds[1];
-
+function update_(collections, d3path, ptFeatures, svg, path, g, toLine) {
   svg.attr("width", function(d){
-      var bounds = d3path.bounds(d);
+      var bounds = d3path.bounds(d.geojson);
       return bounds[1][0] - bounds[0][0] + 120})
     .attr("height", function(d){
-      var bounds = d3path.bounds(d);
+      var bounds = d3path.bounds(d.geojson);
       return bounds[1][1] - bounds[0][1] + 120})
     .style("left", function(d){
-      var bounds = d3path.bounds(d);
+      var bounds = d3path.bounds(d.geojson);
       return bounds[0][0] - 50 + "px"})
     .style("top", function(d){
-      var bounds = d3path.bounds(d);
+      var bounds = d3path.bounds(d.geojson);
       return bounds[0][1] - 50 + "px"});
 
   g.attr("transform", function(d){
-    var bounds = d3path.bounds(d);
+    var bounds = d3path.bounds(d.geojson);
     return "translate(" + (-bounds[0][0] + 50) + "," + (-bounds[0][1] + 50) + ")"
   });
 
   // translate the point to the lat lng
+  // datapoints are individuals features here
   ptFeatures.attr("transform", function(d) {
     return "translate(" +
       applyLatLngToLayer(d).x + "," +
@@ -134,5 +185,5 @@ function update(collections, d3path, ptFeatures, svg, linePath, g, toLine) {
   });
 
   // generate the line path
-  linePath.attr("d", toLine);
+  path.attr("d", toLine);
 }
