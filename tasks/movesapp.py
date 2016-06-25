@@ -254,6 +254,47 @@ def add_prediction(transport, prediction):
     return transport
 
 
+def make_geometry(trackPoint):
+    """ make a geojson geometry """
+    return {
+        'type': 'Point',
+        'coordinates': [trackPoint['lon'], trackPoint['lat']]
+    }
+
+
+def make_property(trackPoint):
+    """ makes a geojson property """
+    return {
+        'latitude': trackPoint['lat'],
+        'longitude': trackPoint['lon'],
+        'time': trackPoint['time'],
+        'id': 'transport'
+    }
+
+
+def make_feature(trackPoint):
+    """ makes a geojson feature """
+    return {
+        'type': 'Feature',
+        'properties': make_property(trackPoint),
+        'geometry': make_geometry(trackPoint)
+    }
+
+
+def make_feature_collection(transport):
+    """ makes a geojson feature collection """
+    return {
+        'type': 'FeatureCollection',
+        'features': [make_feature(tp) for tp in transport['trackPoints']]
+    }
+
+
+def add_feature_collection(transport):
+    transport['geojson'] = make_feature_collection(transport)
+    return transport
+
+
+
 
 # SOME TEST STUFF TO SEE HOW THINGS ARE WORKING
 if __name__ == '__main__':
@@ -293,6 +334,7 @@ if __name__ == '__main__':
     preds = [predict_transport_type(transport, model, station_points) for transport in transports]
     transports_with_type = [add_prediction(t, preds[ix]) for ix, t in enumerate(transports)]
     transports_with_carbon = [add_carbon(t) for t in transports_with_type]
+    transports_with_geojson = [add_feature_collection(t) for t in transports_with_carbon]
     insert_resources(transports_with_carbon)
 
 
