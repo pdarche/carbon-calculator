@@ -88,8 +88,9 @@ def fetch_resource(resource, date, update_since=None):
 
 
 def fetch_resources(resource_type, missing_dates):
+    """ Fetches resources of a given type for a list of dates """
     resources = []
-    for date in missing_dates[:30]:
+    for date in missing_dates[:50]:
         resource = fetch_resource(resource_type, date)
         resources.append(resource[0])
     return resources
@@ -137,22 +138,26 @@ def insert_resources(transformed_resources):
 
 
 def extract_segments(storylines):
+    """ Extracts segment lists from storyline dicts """
     segments = [s['data']['segments'] for s in storylines
                 if s['data']['segments']]
     return itertools.chain(*segments)
 
 
 def extract_activities(segments):
+    """ Returns the activity dicts from a segment """
     activities = [s['activities'] for s in segments
                   if s.has_key('activities')]
     return itertools.chain(*activities)
 
 
 def datetime_to_seconds(dt):
+    """ Converts datetime to seconds """
     return (dt.hour * 3600) + (dt.minute * 60) + dt.second
 
 
 def create_features(transport, station_points):
+    """ Creates the features for use in the model """
     start_time = dateutil.parser.parse(transport['startTime'])
     end_time = dateutil.parser.parse(transport['endTime'])
     fp = transport['trackPoints'][0]
@@ -173,12 +178,20 @@ def create_features(transport, station_points):
 
 
 def compute_min_distance(lat_lng, station_points):
+    """
+    Computes the smallest distance between the start a point
+    and a subway entrance.
+    """
     distances = [distance_on_unit_sphere(lat_lng[1], lat_lng[0],
                     point[1], point[0]) for point in station_points]
     return min(distances)
 
 
 def compute_total_distance(first_point, last_point, station_points):
+    """
+    Computes distance between the smallest starting and end point
+    of a given transport.
+    """
     start = compute_min_distance(first_point, station_points)
     end = compute_min_distance(last_point, station_points)
 
@@ -186,6 +199,7 @@ def compute_total_distance(first_point, last_point, station_points):
 
 
 def distance_on_unit_sphere(lat1, long1, lat2, long2):
+    """ Computes the distance between two points on a sphere """
     # Convert latitude and longitude to
     # spherical coordinates in radians.
     degrees_to_radians = math.pi/180.0
@@ -219,18 +233,21 @@ def distance_on_unit_sphere(lat1, long1, lat2, long2):
 
 
 def predict_transport_type(transport, model, station_points):
+    """ Predicts the transportation type from a transport dict """
     X = create_features(transport, station_points)
     pred = model.predict(X)
     return labels[pred]
 
 
 def predict_transport_types(transports, model, station_points):
+    """ Predicts the transportation types from a transport dict """
     X = np.array([create_features(t, station_points) for t in transports])
     preds = model.predict(X)
     return [labels[pred] for pred in preds]
 
 
 def compute_carbon_kg(transport):
+    """ Computes the kgs of carbon for a given transport """
     url = BASE + TYPES[transport['type']]
     params = {
         'distance': transport['distance'],
@@ -243,6 +260,7 @@ def compute_carbon_kg(transport):
 
 
 def add_carbon(transport):
+    """ Adds carbon kg value attribute to transport """
     time.sleep(.05)
     kgs = compute_carbon_kg(transport)
     transport['carbon'] = kgs
@@ -250,12 +268,21 @@ def add_carbon(transport):
 
 
 def add_prediction(transport, prediction):
+    """ Adds the prediction attribute to a transport dict """
     transport['type'] = prediction
     return transport
 
 
+def update_times(transport):
+    """ Converts start and end times and to datetimes """
+    transport['date'] = dateutil.parser.parse(transport['startTime']).strftime("%Y-%m-%d")
+    transport['startDatetime'] = dateutil.parser.parse(transport['startTime'])
+    transport['endDatetime'] = dateutil.parser.parse(transport['endTime'])
+    return transport
+
+
 def make_geometry(trackPoint):
-    """ make a geojson geometry """
+    """ Makes a geojson geometry """
     return {
         'type': 'Point',
         'coordinates': [trackPoint['lon'], trackPoint['lat']]
@@ -263,7 +290,7 @@ def make_geometry(trackPoint):
 
 
 def make_property(trackPoint):
-    """ makes a geojson property """
+    """ Makes a geojson property dict """
     return {
         'latitude': trackPoint['lat'],
         'longitude': trackPoint['lon'],
@@ -273,7 +300,7 @@ def make_property(trackPoint):
 
 
 def make_feature(trackPoint):
-    """ makes a geojson feature """
+    """ Makes a geojson feature dict """
     return {
         'type': 'Feature',
         'properties': make_property(trackPoint),
@@ -282,7 +309,7 @@ def make_feature(trackPoint):
 
 
 def make_feature_collection(transport):
-    """ makes a geojson feature collection """
+    """ makes a geojson feature collection dict """
     return {
         'type': 'FeatureCollection',
         'features': [make_feature(tp) for tp in transport['trackPoints']]
@@ -290,6 +317,7 @@ def make_feature_collection(transport):
 
 
 def add_feature_collection(transport):
+    """ Adds feature collection dict to a transport dict """
     transport['geojson'] = make_feature_collection(transport)
     return transport
 
@@ -314,8 +342,6 @@ if __name__ == '__main__':
     features = subways_entrances['features']
     station_points = [p['geometry']['coordinates'] for p in features]
 
-    # for i in range(20):
-    # print "round {}".format(i)`
     # Find the dates that haven't been fetched
     membership_dates = service_daterange(profile['profile']['firstDate'])
     existing_dates = existing_dates_(profile, 'storyline')
@@ -335,7 +361,8 @@ if __name__ == '__main__':
     transports_with_type = [add_prediction(t, preds[ix]) for ix, t in enumerate(transports)]
     transports_with_carbon = [add_carbon(t) for t in transports_with_type]
     transports_with_geojson = [add_feature_collection(t) for t in transports_with_carbon]
-    insert_resources(transports_with_carbon)
+    final_transports = [update_times(t) for t in transports_with_geojson]
+    insert_resources(final_transports)
 
 
 

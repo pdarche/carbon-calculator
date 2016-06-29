@@ -20,11 +20,15 @@ map.scrollWheelZoom.disable();
 map.boxZoom.disable();
 map.keyboard.disable();
 
-$(document).on('keypress', function(){
-  var offset = Math.floor(Math.random() * 600) + 1;
-  var limit = Math.floor(Math.random() * 10) + 1;
+var format = d3.time.format("%Y-%m-%d");
+var date = format(new Date());
 
-  $.getJSON("/transports", {offset: offset, limit: limit}, function(data) {
+$(document).on('keypress', function(){
+  var params = {};
+  date = d3.time.day.offset(new Date(date), -1)
+  params.date = format(date);
+
+  $.getJSON("/transports", params, function(data) {
     collections = data.map(function(transport){
       transport.bounds = d3path.bounds(transport.geojson);
       return transport

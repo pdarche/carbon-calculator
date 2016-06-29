@@ -2,9 +2,13 @@
 # -*- coding: utf-8 -*-
 import json
 
+from bson import json_util
+import dateutil.parser
+from datetime import timedelta
+import pymongo
 import tornado.web
 import tornado.gen
-import pymongo
+
 
 import mixins
 from config import settings
@@ -42,8 +46,8 @@ class MovesConnectHandler(tornado.web.RequestHandler,
 
 class TransportsHandler(tornado.web.RequestHandler):
     def get(self):
-        skip = int(self.get_argument('offset'))
-        limit = int(self.get_argument('limit'))
-        transports = list(db.moves2.find({}, {'_id': 0}).skip(2000).limit(100))
-        self.write(json.dumps(transports))
+        date = self.get_argument('date')
+        transports = list(db.moves2.find(
+            {'date': date}, {'_id': 0}))
+        self.write(json.dumps(transports, default=json_util.default))
 
