@@ -29,11 +29,11 @@ $(document).on('keypress', function(){
   params.date = format(date);
 
   $.getJSON("/transports", params, function(data) {
-    collections = data.map(function(transport){
+    collection = data.map(function(transport){
       transport.bounds = d3path.bounds(transport.geojson);
       return transport
     });
-    update(collections);
+    update(collection);
   });
 });
 
@@ -42,9 +42,11 @@ function update(data){
   var svgs = d3.select(map.getPanes().overlayPane)
     .selectAll('.transport')
     .data(data)
+
   // Exit and remove the old svgs and all the gs
   svgs.exit().remove();
   svgs.select('g').remove();
+
   // Update
   svgs.attr('class', function(d){
       return 'transport ' + d.type})
@@ -78,6 +80,7 @@ function update(data){
         (-d.bounds[0][0] + 50) + "," + (-d.bounds[0][1] + 50) + ")"
     });
 
+
   // Points
   var ptFeatures = g.selectAll("circle")
     .data(function(d){return d.geojson.features})
@@ -95,17 +98,21 @@ function update(data){
         applyLatLngToLayer(d).y + ")";
     });
 
+
   // Paths
   var path = g.selectAll(".lineConnect")
     .data(function(d){
       return [d.geojson.features]
     });
+
   // Enter
   path.enter()
     .append("path")
     .attr("class", "lineConnect");
+
   // Update
   path.attr("d", toLine);
+
   // Exit
   path.exit().remove();
 

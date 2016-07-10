@@ -26,17 +26,14 @@ TYPES = {
  'bus': 'bus_trips.json'
 }
 
-def existing_dates_(profile, record_type):
+def existing_dates_(profile):
     """ Finds the earliest update for a moves record. """
-    docs = db.moves2.find({
-        'record_type': record_type,
-        'userId': profile['userId']
-        }, {'date': 1})
-    dates = [doc['date'].date() for doc in docs]
+    docs = db.moves2.distinct('date')
+    dates = [dateutil.parser.parse(doc).date() for doc in docs]
     return dates
 
 
-def service_daterange(start_date):
+def active_daterange(start_date):
     """ Creates a list of datatime date objects from starting with
     the date the person joined Moves to today.
     """
@@ -90,7 +87,7 @@ def fetch_resource(resource, date, update_since=None):
 def fetch_resources(resource_type, missing_dates):
     """ Fetches resources of a given type for a list of dates """
     resources = []
-    for date in missing_dates[:50]:
+    for date in missing_dates[:59]:
         resource = fetch_resource(resource_type, date)
         resources.append(resource[0])
     return resources
@@ -250,7 +247,7 @@ def compute_carbon_kg(transport):
     """ Computes the kgs of carbon for a given transport """
     url = BASE + TYPES[transport['type']]
     params = {
-        'distance': transport['distance'],
+        'distance': transport['distance'] / 1000, # convert meters to kilometers
         'key': KEY
     }
     res = requests.get(url, params=params).json()
@@ -343,8 +340,8 @@ if __name__ == '__main__':
     station_points = [p['geometry']['coordinates'] for p in features]
 
     # Find the dates that haven't been fetched
-    membership_dates = service_daterange(profile['profile']['firstDate'])
-    existing_dates = existing_dates_(profile, 'storyline')
+    membership_dates = active_daterange(profile['profile']['firstDate'])
+    existing_dates = existing_dates_(profile)
     non_existing_dates = missing_dates(membership_dates, existing_dates)
 
     # Fetch the data for the missing dates
@@ -354,6 +351,7 @@ if __name__ == '__main__':
     transformed_resources = list(transform_resources(resources, 'storyline', profile))
     segments = list(extract_segments(transformed_resources))
     activities = list(extract_activities(segments))
+    db.activities2.insert(activities)
     transports = [a for a in activities if a['activity'] == 'transport']
 
     # Predict the carbon
@@ -363,8 +361,4 @@ if __name__ == '__main__':
     transports_with_geojson = [add_feature_collection(t) for t in transports_with_carbon]
     final_transports = [update_times(t) for t in transports_with_geojson]
     insert_resources(final_transports)
-
-
-
-
 
