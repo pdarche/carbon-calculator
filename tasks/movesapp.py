@@ -26,11 +26,23 @@ TYPES = {
  'bus': 'bus_trips.json'
 }
 
-def existing_dates_(profile):
+def existing_dates():
     """ Finds the earliest update for a moves record. """
     docs = db.moves2.distinct('date')
     dates = [dateutil.parser.parse(doc).date() for doc in docs]
     return dates
+
+
+def no_transport_dates():
+    """ Finds the dates that don't have transport records """
+    docs = db.no_transport_dates.distinct('date')
+    dates = [dateutil.parser.parse(doc).date() for doc in docs]
+    return dates
+
+
+def create_no_transport_dates(no_transport_dates):
+    """ Creates a list of no_transport_date dicts """
+    return [{'date': d.strftime('%Y-%m-%d')} for d in no_transport_dates]
 
 
 def active_daterange(start_date):
@@ -45,9 +57,11 @@ def active_daterange(start_date):
     return dates
 
 
-def missing_dates(service_dates, existing_dates):
+def missing_dates(service_dates, existing_dates, no_transport_dates):
     """ Returns a list of dates that haven't been fetched """
-    return [date for date in service_dates if date not in existing_dates]
+    return [date for date in service_dates
+            if date not in existing_dates
+            and date not in no_transport_dates]
 
 
 def fetch_resource(resource, date, update_since=None):
@@ -84,10 +98,10 @@ def fetch_resource(resource, date, update_since=None):
     return resources
 
 
-def fetch_resources(resource_type, missing_dates):
+def fetch_resources(resource_type, missing_dates, limit):
     """ Fetches resources of a given type for a list of dates """
     resources = []
-    for date in missing_dates[:59]:
+    for date in missing_dates[:limit]:
         resource = fetch_resource(resource_type, date)
         resources.append(resource[0])
     return resources
@@ -278,6 +292,11 @@ def update_times(transport):
     return transport
 
 
+def create_transport(activity):
+    """ Creates a transport record """
+    pass
+
+
 def make_geometry(trackPoint):
     """ Makes a geojson geometry """
     return {
@@ -320,7 +339,6 @@ def add_feature_collection(transport):
 
 
 
-
 # SOME TEST STUFF TO SEE HOW THINGS ARE WORKING
 if __name__ == '__main__':
     client = pymongo.MongoClient('localhost', 27017)
@@ -341,24 +359,41 @@ if __name__ == '__main__':
 
     # Find the dates that haven't been fetched
     membership_dates = active_daterange(profile['profile']['firstDate'])
-    existing_dates = existing_dates_(profile)
-    non_existing_dates = missing_dates(membership_dates, existing_dates)
+    existing_dates_ = existing_dates()
+    no_transport_dates_ = no_transport_dates()
+    non_existing_dates = missing_dates(
+        membership_dates, existing_dates_, no_transport_dates_)
 
     # Fetch the data for the missing dates
-    resources = fetch_resources('storyline', non_existing_dates)
+    limit = 30
+    resources = fetch_resources('storyline', non_existing_dates, limit)
 
     # Transform the date into a collection of activiy records
     transformed_resources = list(transform_resources(resources, 'storyline', profile))
     segments = list(extract_segments(transformed_resources))
     activities = list(extract_activities(segments))
-    db.activities2.insert(activities)
     transports = [a for a in activities if a['activity'] == 'transport']
+    transports_with_time = [update_times(t) for t in transports]
+    print "Transport count is {}".format(len(transports))
+
+    # Get the transport dates
+    # Extract the transport dates that aren't in
+    transport_dates = set([dateutil.parser.parse(t['date']).date()
+        for t in transports_with_time])
+    no_transport_dates_ = [date for date in non_existing_dates[:limit]
+        if date not in transport_dates]
+    no_transport_dates_ = create_no_transport_dates(no_transport_dates_)
+    # Insert the no_transport_dates into the collection
+    print "No transport count is {}".format(len(no_transport_dates_))
+    try:
+        db.no_transport_dates.insert(no_transport_dates_)
+    except:
+        pass
 
     # Predict the carbon
-    preds = [predict_transport_type(transport, model, station_points) for transport in transports]
+    preds = [predict_transport_type(transport, model, station_points) for transport in transports_with_time]
     transports_with_type = [add_prediction(t, preds[ix]) for ix, t in enumerate(transports)]
     transports_with_carbon = [add_carbon(t) for t in transports_with_type]
     transports_with_geojson = [add_feature_collection(t) for t in transports_with_carbon]
-    final_transports = [update_times(t) for t in transports_with_geojson]
-    insert_resources(final_transports)
+    insert_resources(transports_with_geojson)
 
