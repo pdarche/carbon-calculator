@@ -365,7 +365,7 @@ if __name__ == '__main__':
         membership_dates, existing_dates_, no_transport_dates_)
 
     # Fetch the data for the missing dates
-    limit = 30
+    limit = 45
     resources = fetch_resources('storyline', non_existing_dates, limit)
 
     # Transform the date into a collection of activiy records
@@ -374,7 +374,6 @@ if __name__ == '__main__':
     activities = list(extract_activities(segments))
     transports = [a for a in activities if a['activity'] == 'transport']
     transports_with_time = [update_times(t) for t in transports]
-    print "Transport count is {}".format(len(transports))
 
     # Get the transport dates
     # Extract the transport dates that aren't in
@@ -384,7 +383,6 @@ if __name__ == '__main__':
         if date not in transport_dates]
     no_transport_dates_ = create_no_transport_dates(no_transport_dates_)
     # Insert the no_transport_dates into the collection
-    print "No transport count is {}".format(len(no_transport_dates_))
     try:
         db.no_transport_dates.insert(no_transport_dates_)
     except:
