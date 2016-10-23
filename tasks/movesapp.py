@@ -342,8 +342,7 @@ def add_feature_collection(transport):
 # SOME TEST STUFF TO SEE HOW THINGS ARE WORKING
 if __name__ == '__main__':
     client = pymongo.MongoClient('localhost', 27017)
-    db = client.carbon_calculator
-
+    db = client.carbon
     # Get the user's profile
     profile = db.users.find_one({'userId': 32734778124657154})
     moves = mvs.MovesClient(access_token=profile['user']['access_token'])
@@ -372,7 +371,7 @@ if __name__ == '__main__':
     transformed_resources = list(transform_resources(resources, 'storyline', profile))
     segments = list(extract_segments(transformed_resources))
     activities = list(extract_activities(segments))
-    transports = [a for a in activities if a['activity'] == 'transport']
+    transports = [a for a in activities if a['activity'] in ('transport', 'airplane')]
     transports_with_time = [update_times(t) for t in transports]
 
     # Get the transport dates
