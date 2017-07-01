@@ -15,7 +15,7 @@ from config import settings
 
 
 client = pymongo.MongoClient('localhost', 27017)
-db = client.carbon_calculator
+db = client.carbon
 
 class BaseHandler(tornado.web.RequestHandler):
     def get_current_user(self):
@@ -35,7 +35,7 @@ class MovesConnectHandler(tornado.web.RequestHandler,
             profile = yield self.get_authenticated_user(
                 redirect_uri='http://127.0.0.1:8000/moves',
                 code=self.get_argument("code"))
-            db.profiles.insert(profile)
+            db.users.insert(profile)
         else:
             yield self.authorize_redirect(
                 redirect_uri='http://127.0.0.1:8000/moves',
