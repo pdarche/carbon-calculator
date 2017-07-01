@@ -47,14 +47,13 @@ def create_no_transport_dates(no_transport_dates):
 
 def active_daterange(start_date):
     """ Creates a list of datatime date objects from starting with
-    the date the person joined Moves to today.
+    the date the person joined Moves to yesterday (the last full day).
     """
     base_date = dateutil.parser.parse(start_date)
-    today = datetime.datetime.today()
-    numdays = (today - base_date).days
-    dates = [(today - datetime.timedelta(days=x)).date()
-                for x in range(0, numdays)]
-    return dates
+    yesterday = datetime.datetime.today() - datetime.timedelta(1)
+    numdays = (yesterday - base_date).days
+    for x in range(0, numdays):
+        yield (yesterday - datetime.timedelta(days=x)).date()
 
 
 def missing_dates(service_dates, existing_dates, no_transport_dates):
@@ -98,38 +97,26 @@ def fetch_resource(resource, date, update_since=None):
     return resources
 
 
-def fetch_resources(resource_type, missing_dates, limit):
-    """ Fetches resources of a given type for a list of dates """
-    resources = []
-    for date in missing_dates[:limit]:
-        resource = fetch_resource(resource_type, date)
-        resources.append(resource[0])
-    return resources
-
-
-def transform_resource(resource, record_type, profile):
-    """ Adds metadata to a move source record. """
-    date_datetime = dateutil.parser.parse(resource['date'])
-
-    if resource.has_key('lastUpdate'):
-        update_datetime = dateutil.parser.parse(resource['lastUpdate'])
-    else:
-        update_datetime = date_datetime
-
-    transformed = {
-        'userId': profile['userId'],
-        'record_type': record_type,
-        'last_update': update_datetime,
-        'date': date_datetime,
-        'data': resource
-    }
-    return transformed
-
-
-def transform_resources(resources, record_type, profile):
-    """ Adds some metadata to raw Moves resources. """
-    for resource in resources:
-        yield transform_resource(resource, record_type, profile)
+#def transform_resource(resource, record_type, profile):
+#    """ Adds metadata to a move source record.
+#
+#    NOTE: this is not used
+#    """
+#    date_datetime = dateutil.parser.parse(resource['date'])
+#
+#    if resource.has_key('lastUpdate'):
+#        update_datetime = dateutil.parser.parse(resource['lastUpdate'])
+#    else:
+#        update_datetime = date_datetime
+#
+#    transformed = {
+#        'userId': profile['userId'],
+#        'record_type': record_type,
+#        'last_update': update_datetime,
+#        'date': date_datetime,
+#        'data': resource
+#    }
+#    return transformed
 
 
 def insert_resources(transformed_resources):
@@ -138,9 +125,9 @@ def insert_resources(transformed_resources):
     """
     try:
         res = db.moves2.insert(transformed_resources)
-    except pymongo.errors.BulkWriteError, results:
-        res = db.moves2.remove(results)
-        logging.error('BulkWriteError')
+    except pymongo.errors.BulkWriteError as bwe:
+        # res = db.moves2.remove(results)
+        logging.error(bwe.details)
     except Exception, exception:
         logging.error(exception.message)
         res = None
@@ -149,17 +136,58 @@ def insert_resources(transformed_resources):
 
 
 def extract_segments(storylines):
-    """ Extracts segment lists from storyline dicts """
-    segments = [s['data']['segments'] for s in storylines
-                if s['data']['segments']]
+    """ Extracts the segments from a list of storyline dicts
+
+    Args:
+        storyline: Moves storyline dict
+
+    Returns:
+        segments: list of Moves segment dicts
+
+    TODO:
+        I'll need to refactor as the "data" attribute
+        can probably be removed
+    """
+    segments = [s.get('segments') for s in storylines
+                if s.get('segments')]
     return itertools.chain(*segments)
 
 
 def extract_activities(segments):
-    """ Returns the activity dicts from a segment """
-    activities = [s['activities'] for s in segments
+    """ Extracts the actiities from segments
+    Args:
+        segments: list of Moves segment dicts
+
+    Returns:
+        activities: list of activity dicts
+    """
+    activities = [s.get('activities') for s in segments
                   if s.has_key('activities')]
     return itertools.chain(*activities)
+
+
+def extract_transports(activities):
+    """ Extracts the transportation activities from user activities
+    Args:
+        activities: list of Moves activity dicts
+
+    Returns:
+        transports: list of transport activity dicts
+    """
+    return filter(lambda a: a.get('activity') in ('transport', 'airplane'), activities)
+
+
+def transform_transport(transport):
+    """ Updates time information for a transport dict """
+    transport['date'] = dateutil.parser.parse(transport['startTime']).strftime("%Y-%m-%d")
+    transport['startDatetime'] = dateutil.parser.parse(transport['startTime'])
+    transport['endDatetime'] = dateutil.parser.parse(transport['endTime'])
+    return transport
+
+
+def transform_transports(transports):
+    """ Updates time information for a list of transport """
+    return map(transform_transport, transports)
 
 
 def datetime_to_seconds(dt):
@@ -245,6 +273,7 @@ def distance_on_unit_sphere(lat1, long1, lat2, long2):
 
 def predict_transport_type(transport, model, station_points):
     """ Predicts the transportation type from a transport dict """
+    labels = ['subway', 'bus', 'car', 'airplane']
     X = create_features(transport, station_points)
     pred = model.predict(X)
     return labels[pred]
@@ -282,19 +311,6 @@ def add_prediction(transport, prediction):
     """ Adds the prediction attribute to a transport dict """
     transport['type'] = prediction
     return transport
-
-
-def update_times(transport):
-    """ Converts start and end times and to datetimes """
-    transport['date'] = dateutil.parser.parse(transport['startTime']).strftime("%Y-%m-%d")
-    transport['startDatetime'] = dateutil.parser.parse(transport['startTime'])
-    transport['endDatetime'] = dateutil.parser.parse(transport['endTime'])
-    return transport
-
-
-def create_transport(activity):
-    """ Creates a transport record """
-    pass
 
 
 def make_geometry(trackPoint):
@@ -338,17 +354,16 @@ def add_feature_collection(transport):
     return transport
 
 
-
-# SOME TEST STUFF TO SEE HOW THINGS ARE WORKING
 if __name__ == '__main__':
+    LIMIT = 45
     client = pymongo.MongoClient('localhost', 27017)
     db = client.carbon
+
     # Get the user's profile
-    profile = db.users.find_one({'userId': 32734778124657154})
+    user = db.users.find_one({'userId': 32734778124657154})
     moves = mvs.MovesClient(access_token=profile['user']['access_token'])
 
     # Get the model
-    labels = ['subway', 'bus', 'car', 'airplane']
     model = pickle.load(open('../models/gradient_boosting.p', 'rb'))
 
     # Find the subway station entrances
@@ -357,40 +372,31 @@ if __name__ == '__main__':
     station_points = [p['geometry']['coordinates'] for p in features]
 
     # Find the dates that haven't been fetched
-    membership_dates = active_daterange(profile['profile']['firstDate'])
+    membership_dates = active_daterange(user['profile']['firstDate'])
     existing_dates_ = existing_dates()
     no_transport_dates_ = no_transport_dates()
-    non_existing_dates = missing_dates(
+    missing_dates_ = missing_dates(
         membership_dates, existing_dates_, no_transport_dates_)
 
-    # Fetch the data for the missing dates
-    limit = 45
-    resources = fetch_resources('storyline', non_existing_dates, limit)
+    for date in missing_dates_[:LIMIT]:
+        storyline = fetch_resource('storyline', date)
+        segments = extract_segments(storyline)
+        activities = extract_activities(segments)
+        transports = extract_transports(activities)
+        transformed = transform_transports(transports)
+        if not transformed:
+            # add the date to the no transport dates and continue
+            db.no_transport_dates.insert({'date': date.strftime('%Y-%m-%d')})
+            continue
+        # predict the transportation type
+        preds = [predict_transport_type(t, model, station_points) for t in transformed]
+        # add the predictions
+        transports_type = [add_prediction(t, preds[ix]) for ix, t in enumerate(transformed)]
+        # add the carbon
+        transports_carbon = [add_carbon(t) for t in transports_type]
+        # add the geojson
+        transports_geojson = [add_feature_collection(t) for t in transports_carbon]
+        # insert the transports
+        insert_resources(transports_geojson)
 
-    # Transform the date into a collection of activiy records
-    transformed_resources = list(transform_resources(resources, 'storyline', profile))
-    segments = list(extract_segments(transformed_resources))
-    activities = list(extract_activities(segments))
-    transports = [a for a in activities if a['activity'] in ('transport', 'airplane')]
-    transports_with_time = [update_times(t) for t in transports]
-
-    # Get the transport dates
-    # Extract the transport dates that aren't in
-    transport_dates = set([dateutil.parser.parse(t['date']).date()
-        for t in transports_with_time])
-    no_transport_dates_ = [date for date in non_existing_dates[:limit]
-        if date not in transport_dates]
-    no_transport_dates_ = create_no_transport_dates(no_transport_dates_)
-    # Insert the no_transport_dates into the collection
-    try:
-        db.no_transport_dates.insert(no_transport_dates_)
-    except:
-        pass
-
-    # Predict the carbon
-    preds = [predict_transport_type(transport, model, station_points) for transport in transports_with_time]
-    transports_with_type = [add_prediction(t, preds[ix]) for ix, t in enumerate(transports)]
-    transports_with_carbon = [add_carbon(t) for t in transports_with_type]
-    transports_with_geojson = [add_feature_collection(t) for t in transports_with_carbon]
-    insert_resources(transports_with_geojson)
 
