@@ -7,14 +7,14 @@ import datetime
 import dateutil.parser
 import itertools
 import logging
-import pickle
 import math
-import requests
+import pickle
 import time
 
-import pymongo
 import numpy as np
 import moves as mvs
+import pymongo
+import requests
 
 
 KEY = '20f32c9fad4aebc9998f8ce569bdc358'
@@ -26,14 +26,14 @@ TYPES = {
  'bus': 'bus_trips.json'
 }
 
-def existing_dates():
+def existing_dates(db):
     """ Finds the earliest update for a moves record. """
     docs = db.moves2.distinct('date')
     dates = [dateutil.parser.parse(doc).date() for doc in docs]
     return dates
 
 
-def no_transport_dates():
+def no_transport_dates(db):
     """ Finds the dates that don't have transport records """
     docs = db.no_transport_dates.distinct('date')
     dates = [dateutil.parser.parse(doc).date() for doc in docs]
@@ -63,7 +63,7 @@ def missing_dates(service_dates, existing_dates, no_transport_dates):
             and date not in no_transport_dates]
 
 
-def fetch_resource(resource, date, update_since=None):
+def fetch_resource(moves, resource, date, update_since=None):
     """ Fetches a user's Moves summary for a given date range
 
     Args:
@@ -88,50 +88,15 @@ def fetch_resource(resource, date, update_since=None):
     if update_since:
         rsrc_path = "%s&updateSince>T%sZ" % (rsrc_path, update_since)
 
-    try:
-        resources = moves.api(rsrc_path, 'GET').json()
-    except Exception, exception:
-        logging.error(exception.message)
-        raise
-
+    resources = moves.api(rsrc_path, 'GET').json()
     return resources
 
 
-#def transform_resource(resource, record_type, profile):
-#    """ Adds metadata to a move source record.
-#
-#    NOTE: this is not used
-#    """
-#    date_datetime = dateutil.parser.parse(resource['date'])
-#
-#    if resource.has_key('lastUpdate'):
-#        update_datetime = dateutil.parser.parse(resource['lastUpdate'])
-#    else:
-#        update_datetime = date_datetime
-#
-#    transformed = {
-#        'userId': profile['userId'],
-#        'record_type': record_type,
-#        'last_update': update_datetime,
-#        'date': date_datetime,
-#        'data': resource
-#    }
-#    return transformed
-
-
-def insert_resources(transformed_resources):
+def insert_resources(db, transformed_resources):
     """ Inserts a collection of transformed resources into
     the moves staging database.
     """
-    try:
-        res = db.moves2.insert(transformed_resources)
-    except pymongo.errors.BulkWriteError as bwe:
-        # res = db.moves2.remove(results)
-        logging.error(bwe.details)
-    except Exception, exception:
-        logging.error(exception.message)
-        res = None
-
+    res = db.moves2.insert(transformed_resources)
     return res
 
 
@@ -174,7 +139,8 @@ def extract_transports(activities):
     Returns:
         transports: list of transport activity dicts
     """
-    return filter(lambda a: a.get('activity') in ('transport', 'airplane'), activities)
+    return filter(lambda a: a.get('activity')
+                  in ('transport', 'airplane'), activities)
 
 
 def transform_transport(transport):
@@ -354,14 +320,14 @@ def add_feature_collection(transport):
     return transport
 
 
-if __name__ == '__main__':
+def update_moves():
     LIMIT = 45
     client = pymongo.MongoClient('localhost', 27017)
     db = client.carbon
 
     # Get the user's profile
     user = db.users.find_one({'userId': 32734778124657154})
-    moves = mvs.MovesClient(access_token=profile['user']['access_token'])
+    moves = mvs.MovesClient(access_token=user['user']['access_token'])
 
     # Get the model
     model = pickle.load(open('../models/gradient_boosting.p', 'rb'))
@@ -373,13 +339,13 @@ if __name__ == '__main__':
 
     # Find the dates that haven't been fetched
     membership_dates = active_daterange(user['profile']['firstDate'])
-    existing_dates_ = existing_dates()
-    no_transport_dates_ = no_transport_dates()
+    existing_dates_ = existing_dates(db)
+    no_transport_dates_ = no_transport_dates(db)
     missing_dates_ = missing_dates(
         membership_dates, existing_dates_, no_transport_dates_)
 
     for date in missing_dates_[:LIMIT]:
-        storyline = fetch_resource('storyline', date)
+        storyline = fetch_resource(moves, 'storyline', date)
         segments = extract_segments(storyline)
         activities = extract_activities(segments)
         transports = extract_transports(activities)
@@ -397,6 +363,9 @@ if __name__ == '__main__':
         # add the geojson
         transports_geojson = [add_feature_collection(t) for t in transports_carbon]
         # insert the transports
-        insert_resources(transports_geojson)
+        insert_resources(db, transports_geojson)
 
+
+if __name__ == '__main__':
+    update_moves()
 

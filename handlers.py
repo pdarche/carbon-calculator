@@ -35,6 +35,7 @@ class MovesConnectHandler(tornado.web.RequestHandler,
             profile = yield self.get_authenticated_user(
                 redirect_uri='http://127.0.0.1:8000/moves',
                 code=self.get_argument("code"))
+            # this should be some sort of find or create
             db.users.insert(profile)
         else:
             yield self.authorize_redirect(
