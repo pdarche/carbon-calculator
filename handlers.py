@@ -8,7 +8,7 @@ from datetime import timedelta
 import pymongo
 import tornado.web
 import tornado.gen
-
+import datetime
 
 import mixins
 from config import settings
@@ -47,8 +47,12 @@ class MovesConnectHandler(tornado.web.RequestHandler,
 
 class TransportsHandler(tornado.web.RequestHandler):
     def get(self):
-        date = self.get_argument('date')
+        date = self.get_argument('date', datetime.datetime(2014, 1, 1, 0, 0))
+        types = self.get_argument('types', 'airplane,car,bus,subway')
         transports = list(db.moves2.find(
-            {'date': date}, {'_id': 0}))
-        self.write(json.dumps(transports, default=json_util.default))
+            {'startDatetime': {'$gte': date}, 'type': {'$in': types.split(',')}},
+            {'_id': 0, "startDatetime": 1, "startTime": 1, "type": 1, "carbon": 1}
+        ).sort('startDatetime', 1))
+        self.write(json.dumps({"data": transports}, default=json_util.default))
+
 
